@@ -1,6 +1,7 @@
 (ns clojobuf.core-test
   (:require [clojobuf.core :refer [encode decode find-fault default-msg
-                                   ->malli-registry]]
+                                   ->malli-registry
+                                   protoc-resource]]
             [clojobuf.macro :refer [protoc-macro]]
             [clojure.test :refer [is deftest run-tests]]))
 
@@ -392,3 +393,41 @@
                            :sint64_singular nil,
                            :uint64_packed nil}))
          0)))
+
+(deftest test-protoc-resource 
+  (let [[codec malli] (protoc-resource ["protobuf/example.proto"])
+        registry [codec malli]
+        msg {:int32_val -1
+             :string_val "abc"
+             :bool_val false
+             :enum_val :ZERO
+             :either :sint32_val
+             :sint32_val -1
+             :int64_string {1 "abc", 2 "def"}
+             :double_vals [0.0, 1.0, 2.0]}]
+       ; Test that registry is created
+    (is (some? codec))
+    (is (some? malli))
+       ; Test that codec contains expected message types
+    (is (contains? codec :my.pb.ns/Msg))
+    (is (contains? codec :my.pb.ns/Msg2))
+       ; Test encoding and decoding
+    (let [binary (encode registry :my.pb.ns/Msg msg)
+          decoded (decode registry :my.pb.ns/Msg binary)]
+      (is (some? binary))
+      (is (= decoded (merge (default-msg registry :my.pb.ns/Msg) msg))))
+       ; Test nested message
+    (let [msg2 {:msg1 msg, :msg1s [msg, msg]}
+          binary2 (encode registry :my.pb.ns/Msg2 msg2)
+          decoded2 (decode registry :my.pb.ns/Msg2 binary2)]
+      (is (some? binary2))
+      (is (= decoded2 (merge (default-msg registry :my.pb.ns/Msg2) msg2))))))
+
+(deftest test-protoc-resource-multiple-files
+  (let [[codec malli] (protoc-resource ["protobuf/simple.proto" "protobuf/no_package.proto"])]
+       ; Test that both files are processed
+    (is (some? codec))
+    (is (some? malli))
+       ; Test that messages from both files are present
+    (is (contains? codec :Msg1))
+    (is (contains? codec :my.ns.simple/Simple))))

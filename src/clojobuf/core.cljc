@@ -7,6 +7,7 @@
             [malli.error :as me]
             [malli.generator :as mg]
             [malli.registry :as mr]
+            #?(:clj [clojobuf.extend :as extend])
             #?(:clj [rubberbuf.core :as rc]) ; rubberbuf.core uses rubberbuf.util which uses cljs-node-io.core that is not available to cljs browser runtime
             [rubberbuf.ast-postprocess :refer [unnest]]))
 
@@ -71,6 +72,21 @@
           "Generate codec and malli registries and return them as a tuple."
           [paths files & {:keys [auto-malli-registry] :or {auto-malli-registry true}}]
           (let [rast (unnest (rc/protoc paths files))
+                codec_malli_pairs (transduce (map (comp xform-ast val)) into [] rast)
+                codec             (transduce (map first)                into {} codec_malli_pairs)
+                malli             (transduce (map second)               into {} codec_malli_pairs)
+                malli             (vschemas-update-msg-field-presence malli)
+                malli (if auto-malli-registry
+                        (->malli-registry malli)
+                        malli)]
+            [codec malli])))
+
+#?(:clj (defn protoc-resource
+          "Generate codec and malli registries from resource paths and return them as a tuple.
+           resource-paths: list of resource paths (e.g., [\"proto/example.proto\"])
+           Reads protocol buffer files from classpath resources using (slurp (io/resource resource-path))."
+          [resource-paths & {:keys [auto-malli-registry] :or {auto-malli-registry true}}]
+          (let [rast (unnest (extend/protoc resource-paths))
                 codec_malli_pairs (transduce (map (comp xform-ast val)) into [] rast)
                 codec             (transduce (map first)                into {} codec_malli_pairs)
                 malli             (transduce (map second)               into {} codec_malli_pairs)
